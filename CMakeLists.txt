@@ -10,6 +10,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(libpit)
 add_subdirectory(heimdall)
-add_subdirectory(heimdall-frontend)
 
-add_dependencies(heimdall-frontend heimdall)
+
+find_package(Qt5Widgets QUIET)
+if (${Qt5Widgets_FOUND})
+	add_subdirectory(heimdall-frontend)
+	add_dependencies(heimdall-frontend heimdall)
+endif(${Qt5Widgets_FOUND})
