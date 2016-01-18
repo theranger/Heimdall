@@ -1,15 +1,15 @@
 /* Copyright (c) 2010-2014 Benjamin Dobell, Glass Echidna
- 
+
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -297,48 +297,57 @@ bool BridgeManager::InitialiseProtocol(void)
 {
 	Interface::Print("Initialising protocol...\n");
 
-	unsigned char dataBuffer[7];
+	unsigned char dataBuffer[256] = {0};
+	int dataTransferred = 0;
+	int result = 0;
 
-	// Send "ODIN"
+	mempcpy(dataBuffer, "ATQ0E0V1\n", 9);
+	if (!SendBulkTransfer(dataBuffer, 9, 1000))
+	{
+		Interface::PrintError("Failed sending ATQ");
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
+	}
+
+	result = libusb_bulk_transfer(deviceHandle, inEndpoint, dataBuffer, 7, &dataTransferred, 1000);
+	if (result != LIBUSB_SUCCESS)
+	{
+		if (verbose) Interface::PrintError("Failed to reseive ATQ response. Result : %d\n", result);
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
+	}
+
+	if (dataTransferred != 9 || memcmp(dataBuffer, "OKAY", 4) != 0)
+	{
+		if (verbose) Interface::PrintError("Expected: \"OKAY\"\nReceived: \"%s\"\n", dataBuffer);
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
+	}
+
 	memcpy(dataBuffer, "ODIN", 4);
-	memset(dataBuffer + 4, 0, 1);
-
 	if (!SendBulkTransfer(dataBuffer, 4, 1000))
 	{
 		Interface::PrintError("Failed to send handshake!");
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
 	}
 
-	// Expect "LOKE"
-	memset(dataBuffer, 0, 7);
-
-	int dataTransferred = 0;
-
-	int result = libusb_bulk_transfer(deviceHandle, inEndpoint, dataBuffer, 7, &dataTransferred, 1000);
-
+	result = libusb_bulk_transfer(deviceHandle, inEndpoint, dataBuffer, 7, &dataTransferred, 1000);
 	if (result != LIBUSB_SUCCESS)
 	{
-		if (verbose)
-			Interface::PrintError("Failed to receive handshake response. Result: %d\n", result);
-	}
-	else
-	{
-		if (dataTransferred == 4 && memcmp(dataBuffer, "LOKE", 4) == 0)
-		{
-			// Successfully received "LOKE"
-			Interface::Print("Protocol initialisation successful.\n\n");
-			return (true);
-		}
-		else
-		{
-			if (verbose)
-				Interface::PrintError("Expected: \"LOKE\"\nReceived: \"%s\"\n", dataBuffer);
-
-			Interface::PrintError("Unexpected handshake response!\n");
-		}
+		if (verbose) Interface::PrintError("Failed to receive handshake response. Result: %d\n", result);
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
 	}
 
-	Interface::PrintError("Protocol initialisation failed!\n\n");
-	return (false);
+	if (dataTransferred != 4 || memcmp(dataBuffer, "LOKE", 4) != 0) {
+		if (verbose) Interface::PrintError("Expected: \"LOKE\"\nReceived: \"%s\"\n", dataBuffer);
+		Interface::PrintError("Unexpected handshake response!\n");
+		return false;
+	}
+
+	Interface::Print("Protocol initialisation successful.\n\n");
+	return true;
 }
 
 BridgeManager::BridgeManager(bool verbose)
@@ -483,7 +492,7 @@ int BridgeManager::Initialise(bool resume)
 			libusb_set_debug(libusbContext, LIBUSB_LOG_LEVEL_DEBUG);
 			break;
 	}
-	
+
 	result = FindDeviceInterface();
 
 	if (result != BridgeManager::kInitialiseSucceeded)
@@ -937,7 +946,7 @@ int BridgeManager::ReceivePitFile(unsigned char **pitBuffer) const
 		}
 
 		int receiveEmptyTransferFlags = (i == transferCount - 1) ? kEmptyTransferAfter : kEmptyTransferNone;
-		
+
 		ReceiveFilePartPacket *receiveFilePartPacket = new ReceiveFilePartPacket();
 		success = ReceivePacket(receiveFilePartPacket, kDefaultTimeoutReceive, receiveEmptyTransferFlags);
 
